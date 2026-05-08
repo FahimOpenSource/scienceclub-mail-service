@@ -33,52 +33,57 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 type Step = "email" | "login" | "signup" | "success"
 
-// Demo: emails that already "exist" in the system
-const EXISTING_EMAILS = [
-  "fahimbaziira@scienceclublss.me",
-  "test@example.com",
-  "user@example.com",
-]
-
-// Ugandan high school curriculum
-const CLASSES = [
-  { value: "1", label: "Senior 1" },
-  { value: "2", label: "Senior 2" },
-  { value: "3", label: "Senior 3" },
-  { value: "4", label: "Senior 4" },
-  { value: "5", label: "Senior 5" },
-  { value: "6", label: "Senior 6" },
-]
-
-// Streams differ between O-Level and A-Level.
-const O_LEVEL_STREAMS = ["A", "B", "C", "D", "E"].map((s) => ({
-  value: s,
-  label: `Stream ${s}`,
-}))
-
-const A_LEVEL_STREAMS = [
-  { value: "p", label: "P" },
-  { value: "b", label: "B" },
-  { value: "c", label: "C" },
-  { value: "e", label: "E" },
-  { value: "r", label: "R" },
-  { value: "d", label: "D" },
-]
-
-function getStreams(klass: string) {
-  if (!klass) return []
-  if (klass === "5" || klass === "6") return A_LEVEL_STREAMS
-  return O_LEVEL_STREAMS
+export type ClassOption = {
+  id: number
+  name: string
+  streams: {
+    classStreamId: number
+    name: string
+  }[]
 }
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
-export function AuthForm({ className }: { className?: string }) {
+function streamLabel(name: string) {
+  return name === name.toLowerCase() ? name.toUpperCase() : `Stream ${name}`
+}
+
+async function validateActiveProfile(
+  supabase: ReturnType<typeof createSupabaseBrowserClient>,
+) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("status")
+    .maybeSingle()
+
+  if (error) {
+    return error.message
+  }
+
+  if (!data) {
+    return "Your profile is not set up yet"
+  }
+
+  if (data.status !== "active") {
+    return "Your account is not active"
+  }
+
+  return null
+}
+
+export function AuthForm({
+  className,
+  classOptions,
+}: {
+  className?: string
+  classOptions: ClassOption[]
+}) {
   const router = useRouter()
   const [step, setStep] = React.useState<Step>("email")
   const [checking, setChecking] = React.useState(false)
@@ -96,14 +101,19 @@ export function AuthForm({ className }: { className?: string }) {
 
   const [errors, setErrors] = React.useState<Record<string, string>>({})
 
-  const streams = React.useMemo(() => getStreams(klass), [klass])
+  const selectedClass = React.useMemo(
+    () => classOptions.find((option) => String(option.id) === klass),
+    [classOptions, klass],
+  )
+
+  const streams = selectedClass?.streams ?? []
 
   // Reset stream when class changes.
   React.useEffect(() => {
     setStream("")
   }, [klass])
 
-  function handleEmailContinue(e: React.FormEvent) {
+  async function handleEmailContinue(e: React.FormEvent) {
     e.preventDefault()
     const next: Record<string, string> = {}
     if (!email.trim()) next.email = "Email is required"
@@ -112,15 +122,30 @@ export function AuthForm({ className }: { className?: string }) {
     if (Object.keys(next).length > 0) return
 
     setChecking(true)
-    // Simulate an API check to determine login vs signup
-    setTimeout(() => {
-      const exists = EXISTING_EMAILS.includes(email.trim().toLowerCase())
+    // checkin if email doesn't have account attached
+    try {
+      const response = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setErrors({ email: data.error ?? "Could not check email" })
+        return
+      }
+
+      const exists = Boolean(data.exists)
       setStep(exists ? "login" : "signup")
+    } catch {
+      setErrors({ email: "Could not check email" })
+    } finally {
       setChecking(false)
-    }, 700)
+    }
   }
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     const next: Record<string, string> = {}
     if (!password) next.password = "Password is required"
@@ -128,13 +153,30 @@ export function AuthForm({ className }: { className?: string }) {
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    setTimeout(() => {
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
+
+    if (error) {
+      setErrors({ password: error.message })
       setSubmitting(false)
-      router.push("/dashboard")
-    }, 800)
+      return
+    }
+
+    const profileError = await validateActiveProfile(supabase)
+
+    if (profileError) {
+      await supabase.auth.signOut()
+      setErrors({ password: profileError })
+      setSubmitting(false)
+      return
+    }
+    router.push("/dashboard")
   }
 
-  function handleSignup(e: React.FormEvent) {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     const next: Record<string, string> = {}
     if (!fullName.trim()) next.fullName = "Full name is required"
@@ -149,10 +191,50 @@ export function AuthForm({ className }: { className?: string }) {
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    setTimeout(() => {
-      setSubmitting(false)
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          classStreamId: Number(stream),
+          boarding,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setErrors({ form: data.error ?? "Could not create account" })
+        return
+      }
+
+      const supabase = createSupabaseBrowserClient()
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      })
+
+      if (error) {
+        setErrors({ form: error.message })
+        return
+      }
+
+      const profileError = await validateActiveProfile(supabase)
+
+      if (profileError) {
+        await supabase.auth.signOut()
+        setErrors({ form: profileError })
+        return
+      }
+
       router.push("/dashboard")
-    }, 900)
+    } catch {
+      setErrors({ form: "Could not create account" })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function handleBack() {
@@ -200,7 +282,7 @@ export function AuthForm({ className }: { className?: string }) {
               <span className="font-medium text-foreground">{email}</span>
             </>
           )}
-          {step === "success" && "Your session has started. Redirecting…"}
+          {step === "success" && "Your session has started. Redirecting..."}
         </CardDescription>
       </CardHeader>
 
@@ -246,7 +328,7 @@ export function AuthForm({ className }: { className?: string }) {
               {checking ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Checking…
+                  Checking...
                 </>
               ) : (
                 <>
@@ -310,7 +392,7 @@ export function AuthForm({ className }: { className?: string }) {
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Signing in…
+                  Signing in...
                 </>
               ) : (
                 "Sign in"
@@ -355,9 +437,9 @@ export function AuthForm({ className }: { className?: string }) {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CLASSES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
+                    {classOptions.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        Senior {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -385,8 +467,11 @@ export function AuthForm({ className }: { className?: string }) {
                   </SelectTrigger>
                   <SelectContent>
                     {streams.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
+                      <SelectItem
+                        key={s.classStreamId}
+                        value={String(s.classStreamId)}
+                      >
+                        {streamLabel(s.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -407,7 +492,7 @@ export function AuthForm({ className }: { className?: string }) {
                     Boarding student
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Are you a boarding student? 
+                    Are you a boarding student?
                   </p>
                 </div>
               </div>
@@ -485,11 +570,15 @@ export function AuthForm({ className }: { className?: string }) {
               )}
             </div>
 
+            {errors.form && (
+              <p className="text-xs text-destructive">{errors.form}</p>
+            )}
+
             <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Creating account…
+                  Creating account...
                 </>
               ) : (
                 "Create account"

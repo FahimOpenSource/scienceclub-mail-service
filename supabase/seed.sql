@@ -8,31 +8,33 @@ values
   ('6')
 on conflict (name) do nothing;
 
-insert into public.streams (class_id, name)
-select classes.id, streams.name
-from public.classes
-cross join (
-  values
-    ('A'),
-    ('B'),
-    ('C'),
-    ('D'),
-    ('E')
-) as streams(name)
-where classes.name in ('1', '2', '3', '4')
-on conflict (class_id, name) do nothing;
+insert into public.streams (name)
+values
+  ('A'),
+  ('B'),
+  ('C'),
+  ('D'),
+  ('E'),
+  ('p'),
+  ('b'),
+  ('c'),
+  ('e'),
+  ('r'),
+  ('d')
+on conflict (name) do nothing;
 
-insert into public.streams (class_id, name)
-select classes.id, streams.name
+insert into public.class_streams (class_id, stream_id)
+select classes.id, streams.id
 from public.classes
-cross join (
-  values
-    ('p'),
-    ('b'),
-    ('c'),
-    ('e'),
-    ('r'),
-    ('d')
-) as streams(name)
+join public.streams
+  on streams.name in ('A', 'B', 'C', 'D', 'E')
+where classes.name in ('1', '2', '3', '4')
+on conflict (class_id, stream_id) do nothing;
+
+insert into public.class_streams (class_id, stream_id)
+select classes.id, streams.id
+from public.classes
+join public.streams
+  on streams.name in ('p', 'b', 'c', 'e', 'r', 'd')
 where classes.name in ('5', '6')
-on conflict (class_id, name) do nothing;
+on conflict (class_id, stream_id) do nothing;
