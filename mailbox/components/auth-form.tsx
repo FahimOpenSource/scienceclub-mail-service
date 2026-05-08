@@ -2,7 +2,17 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2, Mail, Lock, CheckCircle2 } from "lucide-react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  BedDouble,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Mail,
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -22,42 +32,45 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 
 type Step = "email" | "login" | "signup" | "success"
 
 // Demo: emails that already "exist" in the system
-const EXISTING_EMAILS = ["fahimbaziira@scienceclublss.me", "test@example.com", "user@example.com"]
+const EXISTING_EMAILS = [
+  "fahimbaziira@scienceclublss.me",
+  "test@example.com",
+  "user@example.com",
+]
 
 // Ugandan high school curriculum
 const CLASSES = [
-  { value: "S1", label: "Senior 1" },
-  { value: "S2", label: "Senior 2" },
-  { value: "S3", label: "Senior 3" },
-  { value: "S4", label: "Senior 4" },
-  { value: "S5", label: "Senior 5" },
-  { value: "S6", label: "Senior 6" },
+  { value: "1", label: "Senior 1" },
+  { value: "2", label: "Senior 2" },
+  { value: "3", label: "Senior 3" },
+  { value: "4", label: "Senior 4" },
+  { value: "5", label: "Senior 5" },
+  { value: "6", label: "Senior 6" },
 ]
 
-// Streams differ between O-Level (S1–S4) and A-Level (S5–S6)
+// Streams differ between O-Level and A-Level.
 const O_LEVEL_STREAMS = ["A", "B", "C", "D", "E"].map((s) => ({
   value: s,
   label: `Stream ${s}`,
 }))
 
 const A_LEVEL_STREAMS = [
-  { value: "PCM", label: "PCM" },
-  { value: "PCB", label: "PCB" },
-  { value: "BCM", label: "BCM" },
-  { value: "PEM", label: "PEM" },
-  { value: "MEG", label: "MEG" },
-  { value: "HEG", label: "HEG" },
-  { value: "HED", label: "HED" },
-  { value: "AGE", label: "AGE" },
+  { value: "p", label: "P" },
+  { value: "b", label: "B" },
+  { value: "c", label: "C" },
+  { value: "e", label: "E" },
+  { value: "r", label: "R" },
+  { value: "d", label: "D" },
 ]
 
 function getStreams(klass: string) {
   if (!klass) return []
-  if (klass === "S5" || klass === "S6") return A_LEVEL_STREAMS
+  if (klass === "5" || klass === "6") return A_LEVEL_STREAMS
   return O_LEVEL_STREAMS
 }
 
@@ -77,6 +90,7 @@ export function AuthForm({ className }: { className?: string }) {
   const [fullName, setFullName] = React.useState("")
   const [klass, setKlass] = React.useState("")
   const [stream, setStream] = React.useState("")
+  const [boarding, setBoarding] = React.useState(false)
   const [password, setPassword] = React.useState("")
   const [confirmPassword, setConfirmPassword] = React.useState("")
 
@@ -84,10 +98,10 @@ export function AuthForm({ className }: { className?: string }) {
 
   const streams = React.useMemo(() => getStreams(klass), [klass])
 
-  // Reset stream when class changes between O-Level and A-Level
+  // Reset stream when class changes.
   React.useEffect(() => {
     setStream("")
-  }, [klass])// h
+  }, [klass])
 
   function handleEmailContinue(e: React.FormEvent) {
     e.preventDefault()
@@ -172,7 +186,8 @@ export function AuthForm({ className }: { className?: string }) {
           )}
         </div>
         <CardDescription className="text-pretty">
-          {step === "email" && "Enter your email to sign in or create an account."}
+          {step === "email" &&
+            "Enter your email to sign in or create an account."}
           {step === "login" && (
             <>
               Signing in as{" "}
@@ -267,7 +282,9 @@ export function AuthForm({ className }: { className?: string }) {
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-9 pr-10"
                   aria-invalid={!!errors.password}
-                  aria-describedby={errors.password ? "password-error" : undefined}
+                  aria-describedby={
+                    errors.password ? "password-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -315,7 +332,9 @@ export function AuthForm({ className }: { className?: string }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 aria-invalid={!!errors.fullName}
-                aria-describedby={errors.fullName ? "fullName-error" : undefined}
+                aria-describedby={
+                  errors.fullName ? "fullName-error" : undefined
+                }
               />
               {errors.fullName && (
                 <p id="fullName-error" className="text-xs text-destructive">
@@ -376,6 +395,28 @@ export function AuthForm({ className }: { className?: string }) {
                   <p className="text-xs text-destructive">{errors.stream}</p>
                 )}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <BedDouble className="size-4" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label htmlFor="boarding" className="text-sm font-medium">
+                    Boarding student
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Are you a boarding student? 
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="boarding"
+                checked={boarding}
+                onCheckedChange={setBoarding}
+                aria-label="Boarding student"
+              />
             </div>
 
             <div className="flex flex-col gap-2">
@@ -474,6 +515,7 @@ export function AuthForm({ className }: { className?: string }) {
                 setFullName("")
                 setKlass("")
                 setStream("")
+                setBoarding(false)
                 setPassword("")
                 setConfirmPassword("")
                 setStep("email")

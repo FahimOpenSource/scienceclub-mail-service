@@ -20,6 +20,7 @@ create table public.profiles (
   full_name text,
   class_id uuid not null references public.classes(id) on delete restrict,
   stream_id uuid not null,
+  boarding boolean not null default false,
   role text not null default 'student'
     check (role in ('student', 'teacher', 'admin')),
   status text not null default 'active'
@@ -140,7 +141,7 @@ grant select on public.classes to authenticated;
 grant select on public.streams to authenticated;
 
 grant select on public.profiles to authenticated;
-grant update (full_name, class_id, stream_id) on public.profiles to authenticated;
+grant update (full_name, class_id, stream_id, boarding) on public.profiles to authenticated;
 
 grant select on public.email_aliases to authenticated;
 
