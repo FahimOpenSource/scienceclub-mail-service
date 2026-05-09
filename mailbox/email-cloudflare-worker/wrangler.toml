@@ -4,7 +4,7 @@ main = "src/index.ts"
 compatibility_date = "2026-05-08"
 
 [secrets]
-required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL" ]
+required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN" ]
 
 [[send_email]]
 name = "EMAIL"
@@ -23,3 +23,7 @@ invocation_logs = true
 enabled = false
 persist = true
 head_sampling_rate = 1
+
+[[routes]]
+pattern = "email-worker.scienceclublss.me"
+custom_domain = true
