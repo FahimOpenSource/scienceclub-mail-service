@@ -1,12 +1,15 @@
 "use client"
 
+import type { MouseEvent } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Mail, AlertTriangle, Star, Clock, FlaskConical } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { allMailData, spamData, type Email } from "@/lib/emails"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 function EmailRow({ email }: { email: Email }) {
   return (
@@ -45,20 +48,38 @@ function EmailRow({ email }: { email: Email }) {
 }
 
 export function MailboxDashboard() {
+  const router = useRouter()
   const unreadAllMail = allMailData.filter((e) => !e.read).length
   const unreadSpam = spamData.filter((e) => !e.read).length
+
+  async function handleSignOut(e: MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault()
+
+    const supabase = createSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.replace("/")
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-            <FlaskConical className="h-5 w-5 text-primary-foreground" />
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
+              <FlaskConical className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold">Science Club Mailbox</h1>
+              <p className="text-sm text-muted-foreground">Manage your emails</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">Science Club Mailbox</h1>
-            <p className="text-sm text-muted-foreground">Manage your emails</p>
-          </div>
+          <a
+            href="/"
+            onClick={handleSignOut}
+            className="mt-1 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Sign out
+          </a>
         </div>
 
         <Card>
