@@ -19,31 +19,13 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient()
-  const perPage = 1000
-  let page = 1
+  const { data, error } = await supabase.rpc("email_has_account", {
+    email_address: email,
+  })
 
-  while (true) {
-    const { data, error } = await supabase.auth.admin.listUsers({
-      page,
-      perPage,
-    })
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    const exists = data.users.some(
-      (user) => user.email?.toLowerCase() === email,
-    )
-
-    if (exists) {
-      return NextResponse.json({ exists: true })
-    }
-
-    if (data.users.length < perPage) {
-      return NextResponse.json({ exists: false })
-    }
-
-    page += 1
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  return NextResponse.json({ exists: Boolean(data) })
 }
