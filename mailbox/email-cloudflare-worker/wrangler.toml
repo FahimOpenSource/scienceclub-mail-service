@@ -4,7 +4,7 @@ main = "src/index.ts"
 compatibility_date = "2026-05-08"
 
 [secrets]
-required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN" ]
+required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET" ]
 
 [[send_email]]
 name = "EMAIL"
@@ -27,3 +27,11 @@ head_sampling_rate = 1
 [[routes]]
 pattern = "email-worker.scienceclublss.me"
 custom_domain = true
+
+[[durable_objects.bindings]]
+name = "GOOGLE_OAUTH_MANAGER"
+class_name = "GoogleOAuthManager" 
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "GoogleOAuthManager" ]
