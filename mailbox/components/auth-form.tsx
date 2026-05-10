@@ -137,7 +137,7 @@ export function AuthForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       })
-      const data = (await response.json()) as CheckEmailResponse
+      const data: CheckEmailResponse = await response.json()
 
       if (!response.ok) {
         setErrors({ email: data.error ?? "Could not check email" })
@@ -215,7 +215,7 @@ export function AuthForm({
           boarding,
         }),
       })
-      const data = await response.json()
+      const data: { error?: string } = await response.json()
 
       if (!response.ok) {
         setErrors({ form: data.error ?? "Could not create account" })
