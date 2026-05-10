@@ -49,6 +49,33 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient()
 
+  const { data: accountData, error: accountError } = await supabase.rpc(
+    "email_has_account",
+    {
+      email_address: email,
+    },
+  )
+
+  if (accountError) {
+    return NextResponse.json({ error: accountError.message }, { status: 500 })
+  }
+
+  const account = Array.isArray(accountData) ? accountData[0] : accountData
+
+  if (!account?.has_account || !account.user_id) {
+    return NextResponse.json(
+      { error: "Email not found or invalid" },
+      { status: 403 },
+    )
+  }
+
+  if (account.has_profile) {
+    return NextResponse.json(
+      { error: "This account is already set up" },
+      { status: 409 },
+    )
+  }
+
   const { data: classStream, error: classStreamError } = await supabase
     .from("class_streams")
     .select("id")
@@ -70,8 +97,7 @@ export async function POST(request: Request) {
   }
 
   const { data: userData, error: userError } =
-    await supabase.auth.admin.createUser({
-      email,
+    await supabase.auth.admin.updateUserById(account.user_id, {
       password,
       email_confirm: true,
     })
@@ -91,8 +117,6 @@ export async function POST(request: Request) {
   })
 
   if (profileError) {
-    await supabase.auth.admin.deleteUser(userData.user.id)
-
     return NextResponse.json({ error: profileError.message }, { status: 500 })
   }
 

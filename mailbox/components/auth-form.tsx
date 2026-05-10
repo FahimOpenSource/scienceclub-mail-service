@@ -37,6 +37,15 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 type Step = "email" | "login" | "signup" | "success"
 
+type CheckEmailResponse = {
+  error?: string
+  exists?: boolean
+  userId?: string | null
+  isConfirmed?: boolean
+  hasProfile?: boolean
+  canSignup?: boolean
+}
+
 export type ClassOption = {
   id: number
   name: string
@@ -122,22 +131,25 @@ export function AuthForm({
     if (Object.keys(next).length > 0) return
 
     setChecking(true)
-    // checkin if email doesn't have account attached
     try {
       const response = await fetch("/api/auth/check-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       })
-      const data = await response.json()
+      const data = (await response.json()) as CheckEmailResponse
 
       if (!response.ok) {
         setErrors({ email: data.error ?? "Could not check email" })
         return
       }
 
-      const exists = Boolean(data.exists)
-      setStep(exists ? "login" : "signup")
+      if (!data.exists) {
+        setErrors({ email: "No account was found for this email" })
+        return
+      }
+
+      setStep(data.canSignup ? "signup" : "login")
     } catch {
       setErrors({ email: "Could not check email" })
     } finally {
@@ -269,7 +281,7 @@ export function AuthForm({
         </div>
         <CardDescription className="text-pretty">
           {step === "email" &&
-            "Enter your email to sign in or create an account."}
+            "Enter the email assigned to your account."}
           {step === "login" && (
             <>
               Signing in as{" "}

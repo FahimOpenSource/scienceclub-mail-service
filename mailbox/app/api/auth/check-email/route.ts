@@ -27,5 +27,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ exists: Boolean(data) })
+  const result = Array.isArray(data) ? data[0] : data
+  const exists = Boolean(result?.has_account)
+  const hasProfile = Boolean(result?.has_profile)
+
+  return NextResponse.json({
+    exists,
+    userId: result?.user_id ?? null,
+    isConfirmed: Boolean(result?.is_confirmed),
+    hasProfile,
+    canSignup: exists && !hasProfile,
+  })
 }

@@ -1,3 +1,4 @@
+import { SupabaseClient } from "@supabase/supabase-js";
 
 
 interface EmailMessage {
@@ -7,7 +8,7 @@ interface EmailMessage {
 
 export interface Env {
     SUPABASE_URL: string;
-    SUPABASE_SERVICE_ROLE_KEY: string;
+    SUPABASE_SECRET_KEY: string;
     MASTER_GMAIL: string;
     GOOGLE_CLIENT_ID: string;
     GOOGLE_CLIENT_SECRET: string;
@@ -51,11 +52,17 @@ async function redirectToOAuth(env: Env): Promise<Response> {
 });
 }
 
+/**
+ * This function receivees the authorization code from Google and exchanges it for an access token.
+ * The code is provided initially when connecting to a new master Google account, and the refresh token is used to get new access tokens programatically.
+ * The user's refresh token is logged during initial setup and must be added to env.variables.
+ * 
+ * The refresh token is used if code is not provided, which happens during normal operation after the initial setup, to get a new access token without user interaction.
+ */
+// 
 
 async function getGoogleAccessToken(env: Env, code: string | null, refreshToken: string | null): Promise<string> {
 
-    // the code is provuided intially when connecting to new master google account then refresh token is used to get new access tokens programatically
-    // user refresh token is logged during initial setup and must added to env.variables 
     const url = new URL("https://oauth2.googleapis.com/token");
     url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
     url.searchParams.set("client_secret", env.GOOGLE_CLIENT_SECRET);
@@ -79,7 +86,6 @@ async function getGoogleAccessToken(env: Env, code: string | null, refreshToken:
     );
 
     const data: { access_token?: string; expires_in?: number; token_type?: string; scope?: string; refresh_token?: string; error?: string; error_description?: string } = await response.json();
-    console.log('---------',data)
     if (data.error || !data.access_token) {
         return Promise.reject(
             new Error(
@@ -139,6 +145,17 @@ async function handleInitialSetup(
 }
 
 
+/**
+ * Extracts class and stream from an email like "senior5p@scienceclublss.me".
+ * Returns { class: string, stream: string } or null if not matching.
+ */
+function extractClassAndStream(email: string): { class: string, stream: string } | null {
+  const match = /^senior(\d+)([a-zA-Z])@/.exec(email);
+  if (!match) return null;
+  return { class: match[1], stream: match[2] };
+}
+
+
 export default {
     async fetch(request: Request, env: Env) {
         const url = new URL(request.url)
@@ -164,10 +181,74 @@ export default {
 
     async email(message: ForwardableEmailMessage, env: Env) {
 
-        const fromAddress = message.from;
-        const toAddress = message.to;     
+        const receiver = message.to;     
         
-        //
+        // first check if receiver's address is for a single user or group ie stream/class
+        
+        const classStream = extractClassAndStream(receiver);
+        if (!classStream) {
+            // the receiver's address is not a group address such as senior5p@scienceclublss.me
+            console.log('confirming user')
+
+            const rpcApiUrl = new URL(`${env.SUPABASE_URL}/rest/v1/rpc/email_has_account`);
+            const response = await fetch(rpcApiUrl.toString(), {
+                method: "POST",
+                headers: {
+                    "apikey": env.SUPABASE_SECRET_KEY,
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${env.SUPABASE_SECRET_KEY}`,
+                },
+                body: JSON.stringify({ email_address: receiver }),
+            });
+            const {has_account, user_id}: { has_account: boolean; user_id: string | null } = (await response.json())[0] ?? { has_account: false, user_id: null };
+
+            if (!response.ok) {
+                console.error("Error checking email in Supabase:", response.statusText);
+                return;
+            } else {
+                if (has_account) {
+                    // receiver has account
+
+                    const metadata = {
+                        sender: message.from,
+                        subject: message.headers.get("Subject"),
+                        message_id: message.headers.get("Message-ID"),
+                        date_header: message.headers.get("Date"),
+                    };
+
+                    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/email_has_account`, {
+                        method: "POST",
+                        headers: {
+                            apikey: env.SUPABASE_SECRET_KEY,
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+                        },
+                        body: JSON.stringify({ email_address: receiver }),
+                    });
+
+
+                } else {
+                    // doesn't have account
+                }
+
+            }
+
+            console.log();
+
+
+
+
+            
+
+            // check if a user exists with the receiver's email address.
+
+
+            return;
+        } else {
+            return;
+        }
+
+        
 
         await message.forward(env.MASTER_GMAIL);
 
