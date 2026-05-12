@@ -1,16 +1,29 @@
-/**
- * Extracts class and stream from an email like "senior5p@scienceclublss.me".
- * Returns { class: string, stream: string } or null if not matching.
- */
-function extractClassAndStream(
-    email
-) {
-    const match = /^senior(\d+)([a-zA-Z])@/.exec(email);
-    if (!match) return null;
-    return { class: match[1], stream: match[2] };
-}
+const messageId = crypto.randomUUID();
+const date = new Date().toUTCString();
 
-// Example usage:
-const result = extractClassAndStream("senior5p@scienceclublss.me");
-console.log(result);
-// result: { class: "5", stream: "p" }
+const raw = [
+    `From: mbaziirafahim61@gmail.com`,
+    `To: fahim@scienceclublss.me`,
+    `Subject: Foo`,
+    `Date: ${date}`,
+    `Message-ID: ${messageId}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/plain; charset="utf-8"`,
+    "",
+    'This is a message to my beloved!!!',
+].join("\r\n");
+
+const url = new URL("http://127.0.0.1:8787/cdn-cgi/handler/email");
+url.searchParams.set("from", "mbaziirafahim61@gmail.com");
+url.searchParams.set("to", "fahim@scienceclublss.me");
+
+const response = await fetch(url, {
+    method: "POST",
+    headers: {
+        "Content-Type": "text/plain",
+        "X-Message-ID": messageId,
+    },
+    body: raw,
+});
+
+console.log("Response:", await response.text());

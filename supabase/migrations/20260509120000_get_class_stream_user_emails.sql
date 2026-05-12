@@ -2,9 +2,10 @@ create or replace function public.get_class_stream_user_emails(
   class_name text,
   stream_name text
 )
+
 returns table (
   class_stream_exists boolean,
-  emails text[]
+  emails jsonb
 )
 language plpgsql
 security definer
@@ -27,7 +28,7 @@ begin
 
   if found_class_stream_id is null then
     return query
-    select false, array[]::text[];
+    select false, '{}'::jsonb;
     return;
   end if;
 
@@ -35,9 +36,8 @@ begin
   select
     true,
     coalesce(
-      array_agg(lower(users.email) order by lower(users.email))
-        filter (where users.email is not null),
-      array[]::text[]
+      jsonb_object_agg(lower(users.email), users.id  order by lower(users.email))
+        filter (where users.email is not null), '{}'::jsonb
     )
   from public.profiles
   join auth.users

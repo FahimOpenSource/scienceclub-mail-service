@@ -1,6 +1,29 @@
 import { DurableObject } from "cloudflare:workers";
 
+interface GmailMessagePart {
+    partId: string;
+    mimeType: string;
+    filename: string;
+    headers: Array<{ name: string; value: string }>;
+    body: {
+        attachmentId: string;
+        size: number;
+        data: string;
+    };
+    parts: GmailMessagePart[];
+}
 
+interface GmailMessage {
+    id: string;
+    threadId: string;
+    labelIds: [string];
+    snippet: string;
+    historyId: string;
+    internalDate: string;
+    payload: GmailMessagePart;
+    sizeEstimate: number;
+   
+}
 
 interface EmailMessage {
     readonly from: string;
@@ -14,6 +37,8 @@ export interface Env {
     GOOGLE_CLIENT_ID: string;
     GOOGLE_CLIENT_SECRET: string;
     GOOGLE_OAUTH_MANAGER: DurableObjectNamespace<GoogleOAuthManager>;
+    ENV_MODE: "development" | "production";
+    REDIRECT_URI: string;
 }
 
 
@@ -29,13 +54,13 @@ interface ForwardableEmailMessage<Body = unknown> {
     reply(message: EmailMessage): Promise<void>;
 }
 
-type WorkerWithEmail = ExportedHandler<Env> & {
-    email?: (
-        message: ForwardableEmailMessage,
-        env: Env,
-        ctx: ExecutionContext,
-    ) => void | Promise<void>;
-};
+// type WorkerWithEmail = ExportedHandler<Env> & {
+//     email?: (
+//         message: ForwardableEmailMessage,
+//         env: Env,
+//         ctx: ExecutionContext,
+//     ) => void | Promise<void>;
+// };
 
     /**
      * This Durable Object manages persistance of tjhe access tocken across different worker instances.
@@ -76,6 +101,11 @@ export class GoogleOAuthManager extends DurableObject<Env> {
     async getAccessToken(): Promise<string | null> {
         const token = await this.ctx.storage.get("access_token");
         return token !== undefined ? String(token): null;
+    }
+
+    async removeRefreshToken(): Promise<void> {
+        await this.ctx.storage.delete("refresh_token");
+        await this.ctx.storage.delete("refresh_token_expires_in");
     }
 
     async refreshAccessToken(refreshToken: string): Promise<void> {
@@ -143,12 +173,12 @@ async function redirectToOAuth(env: Env): Promise<Response> {
         "https://www.googleapis.com/auth/gmail.readonly",
     ];
     const state = crypto.randomUUID(); // Generate a random state parameter for CSRF protection
-    const redirectUri = "https://email-worker.scienceclublss.me/google/callback";
+    // const redirectUri = "https://email-worker.scienceclublss.me/google/callback";
 
     oAuthUrl.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
     oAuthUrl.searchParams.set("response_type", "code");
     oAuthUrl.searchParams.set("scope", scopes.join(" "));
-    oAuthUrl.searchParams.set("redirect_uri", redirectUri);
+    oAuthUrl.searchParams.set("redirect_uri", env.REDIRECT_URI);
     oAuthUrl.searchParams.set("access_type", "offline");
     oAuthUrl.searchParams.set("state", state);
     console.log("Redirecting to Google OAuth URL:", oAuthUrl.toString());
@@ -175,7 +205,7 @@ async function getGoogleAccessToken(env: Env, code: string, tokenManager: Durabl
     const url = new URL("https://oauth2.googleapis.com/token");
     url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
     url.searchParams.set("client_secret", env.GOOGLE_CLIENT_SECRET);
-    url.searchParams.set("redirect_uri", "https://email-worker.scienceclublss.me/google/callback");
+    url.searchParams.set("redirect_uri", env.REDIRECT_URI);
     url.searchParams.set("grant_type", "authorization_code");
     url.searchParams.set("code", code);
     
@@ -205,8 +235,6 @@ async function getGoogleAccessToken(env: Env, code: string, tokenManager: Durabl
     data.access_token && data.expires_in
         ? await tokenManager.setAccessToken(data.access_token, data.expires_in)
         : null;
-   
-
     console.log("Received refresh token from Google:", data.refresh_token);
 
     return data;
@@ -275,6 +303,214 @@ function getTokenManager(env: Env): DurableObjectStub<GoogleOAuthManager> {
     return env.GOOGLE_OAUTH_MANAGER.getByName("main");
 }
 
+async function forwardMessageToGmail(message: any, env: Env, tokenManager: DurableObjectStub<GoogleOAuthManager>): Promise<{ messageId: string} | null> {
+    // returns the ids of the forwarded message in the master inbox.
+    const messageID = message.headers.get("Message-ID");
+    const accessToken = await tokenManager.getAccessToken();
+    await message.forward(env.MASTER_GMAIL);
+
+    await new Promise((resolve) => setTimeout(resolve, 5000)); // waiting for forwarded message to be processed
+    const listMessagesUrl = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages`,
+    );
+    listMessagesUrl.searchParams.set("q", `rfc822msgid:${messageID} `);
+
+    const reponse = await fetch(listMessagesUrl.toString(), {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    });
+    const messagesList: {
+        messages?: Array<{ id: string; threadId: string }>;
+        resultSizeEstimate: Number;
+    } = JSON.parse(await reponse.text());
+    if (messagesList.resultSizeEstimate !== 0 && messagesList.messages) {
+        const messageId = messagesList.messages[0].id;
+        return { messageId };
+        
+    } 
+    return null;
+    
+}
+
+
+async function getGmailMessageById(messageId: string, tokenManager: DurableObjectStub<GoogleOAuthManager>): Promise<GmailMessage> {
+    const accessToken = await tokenManager.getAccessToken();
+    const getMessageUrl = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}
+`,
+    );
+    getMessageUrl.searchParams.set("format", "full");
+
+    const response = await fetch(getMessageUrl.toString(), {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    });
+
+    const gmailMessage: GmailMessage = await response.json(); 
+    return gmailMessage
+}
+
+async function saveMetaDataToSupabase(gmailMessage: GmailMessage, env: Env, user_id: string, receiver: string, sender: string) {
+
+    const snippet = gmailMessage.snippet;
+    const messageId = gmailMessage.id;
+    const messageThreadId = gmailMessage.threadId;
+    const receivedAt = new Date(Number(gmailMessage.internalDate)).toISOString();
+    const payload = gmailMessage.payload;
+    const hasAttachments = payload.mimeType !== 'multipart/alternative' ? true: false
+    const subject = payload.headers.find((header) => header.name === "Subject")?.value
+    const fromName = payload.headers.find((header) => header.name === "From")?.value
+
+    if (await isMessageSaved(messageId, env, receiver)) {
+        console.log(
+            "Message with id",
+            messageId,
+            "already exists in database.",
+        );
+        return;
+    }
+
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/email_messages`, {
+        method: "POST",
+        headers: {
+            apikey: env.SUPABASE_SECRET_KEY,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+        },
+        body: JSON.stringify({
+            recipient_email: receiver,
+            from_email: sender,
+            snippet: snippet,
+            gmail_message_id: messageId,
+            gmail_thread_id: messageThreadId,
+            received_at: receivedAt,
+            assigned_user_id: user_id,
+            subject: subject,
+            from_name: fromName,
+            has_attachments: hasAttachments,
+        }),
+
+    });
+    if (response.status !== 201 || !response.ok) {
+        console.error("Failed to save email metadata to Supabase", {
+            status: response.status,
+            body: await response.text(),
+        });
+        return
+    } else {
+        console.log("Email sent and saved successfully", await response.text());
+        return
+    }
+    
+}
+
+async function isMessageSaved(
+    gmailMessageId: string,
+    env: Env,
+    receiver: string,
+): Promise<boolean> {
+    const response = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/email_messages?gmail_message_id=eq.${gmailMessageId}&recipient_email=eq.${receiver}`,
+        {
+            method: "GET",
+            headers: {
+                apikey: env.SUPABASE_SECRET_KEY,
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+            },
+        },
+    );
+    const messages: {}[] = await response.json();
+    return messages.length === 0 ? false : true;
+}
+
+
+async function confirmHasUserAccount(env: Env, receiver: string): Promise<{ has_account: boolean; user_id: string | null; }> {
+    const rpcApiUrl = new URL(
+                `${env.SUPABASE_URL}/rest/v1/rpc/email_has_account`,
+            );
+    const response = await fetch(rpcApiUrl.toString(), {
+        method: "POST",
+        headers: {
+            apikey: env.SUPABASE_SECRET_KEY,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+        },
+        body: JSON.stringify({ email_address: receiver }),
+    });
+
+    const json = (await response.json()) as Array<{
+        has_account: boolean;
+        user_id: string | null;
+        is_confirmed: boolean;
+        has_profile: boolean;
+    }>;
+    const { has_account, user_id, is_confirmed, has_profile } =
+        json[0] ?? {
+            has_account: false,
+            user_id: null,
+            is_confirmed: false,
+            has_profile: false,
+        };
+    if (!response.ok) {
+        return Promise.reject(new Error(`Supabase RPC error: ${response.statusText}`));
+    }
+
+    return { has_account, user_id };
+
+}
+
+async function sendGroupEmails(message: any, env: Env, klass: string, stream: string) {
+    const rpcApiUrl = new URL(
+        `${env.SUPABASE_URL}/rest/v1/rpc/get_class_stream_user_emails`,
+    );
+    const response = await fetch(rpcApiUrl.toString(), {
+        method: "POST",
+        headers: {
+            apikey: env.SUPABASE_SECRET_KEY,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+        },
+        body: JSON.stringify({ class_name:klass, stream_name: stream }),
+    });
+
+    const groupEmails = (await response.json()) as Array<{ class_stream_exists: boolean, emails: {string: string} }>;
+    if (!response.ok || !groupEmails[0].class_stream_exists) {
+        console.error("Failed to retrieve group emails or class/stream does not exist");
+        return;
+    } 
+    const sender = message.from;
+    const tokenManager = getTokenManager(env);
+    const gmailMessageId = await forwardMessageToGmail(
+        message,
+        env,
+        tokenManager,
+    );
+    const gmailMessage = gmailMessageId
+        ? await getGmailMessageById(gmailMessageId.messageId, tokenManager)
+        : console.error("Forwarded message not found in Gmail inbox");
+    
+    if (gmailMessage) {
+        for (const [receiver, userId] of Object.entries(groupEmails[0].emails)) {
+            await saveMetaDataToSupabase(
+                gmailMessage,
+                env,
+                userId,
+                receiver,
+                sender,
+            ); 
+            console.log('Group msg sent to: ', receiver)
+        }
+        console.log("All group messages sent successfully");
+        return
+    } return
+    
+}
+
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
@@ -295,11 +531,23 @@ export default {
             return redirectToOAuth(env);
         }
 
+        if (url.pathname === "/remove-refresh-token") {
+            // previous access token should be cleared from state/ storage first before "/connect-gmail" is called again.
+            const tokenManager = getTokenManager(env);
+            await tokenManager.removeRefreshToken();
+            return new Response("Refresh token removed.", {
+                status: 200,
+            });
+        }
+
         if (url.pathname === "/google/callback") {
             const tokenManager = getTokenManager(env);
-            const refreshToken = await tokenManager.getRefreshToken() ;
-            console.log("Received request to /google/callback, refresh token in storage:", refreshToken);
-            if (refreshToken === null ) {
+            const refreshToken = await tokenManager.getRefreshToken();
+            console.log(
+                "Received request to /google/callback, refresh token in storage:",
+                refreshToken,
+            );
+            if (refreshToken === null) {
                 console.log("No refresh token found, handling initial setup");
                 // No refresh token is available, so we need to handle the OAuth callback to get one. This will happen on the first connection during authorization step.
                 // This endpoint is the callback URL that Google redirects to after the user authorizes the app. It handles the OAuth callback and exchanges the authorization code for an access token.
@@ -313,86 +561,61 @@ export default {
         return new Response("Not found", { status: 404 });
     },
 
-    async email(message, env: Env) {
+    async email(
+        message,
+        env: Env,
+        ctx: ExecutionContext,
+    ) {
         const receiver = message.to;
-
         // first check if receiver's address is for a single user or group ie stream/class
 
         const classStream = extractClassAndStream(receiver);
         if (!classStream) {
             // the receiver's address is not a group address such as senior5p@scienceclublss.me
-            console.log("confirming user");
 
-            const rpcApiUrl = new URL(
-                `${env.SUPABASE_URL}/rest/v1/rpc/email_has_account`,
-            );
-            const response = await fetch(rpcApiUrl.toString(), {
-                method: "POST",
-                headers: {
-                    apikey: env.SUPABASE_SECRET_KEY,
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
-                },
-                body: JSON.stringify({ email_address: receiver }),
+            const { has_account, user_id } = await confirmHasUserAccount(
+                env,
+                receiver,
+            ).catch((error) => {
+                console.error("Error confirming user account:", error);
+                return { has_account: false, user_id: null };
             });
 
-            const json = (await response.json()) as Array<{
-                has_account: boolean;
-                user_id: string | null;
-                is_confirmed: boolean;
-                has_profile: boolean;
-            }>;
-            const { has_account, user_id, is_confirmed, has_profile } =
-                json[0] ?? {
-                    has_account: false,
-                    user_id: null,
-                    is_confirmed: false,
-                    has_profile: false,
-                };
-            if (!response.ok) {
-                console.error(
-                    "Error checking email in Supabase:",
-                    response.statusText,
-                );
+            if (!has_account) {
+                console.log(receiver, "does not have an account.");
                 return;
-            } else {
-                if (has_account) {
-                    // receiver has account
-
-                    const metadata = {
-                        sender: message.from,
-                        subject: message.headers.get("Subject"),
-                        message_id: message.headers.get("Message-ID"),
-                        date_header: message.headers.get("Date"),
-                    };
-
-                    const response = await fetch(
-                        `${env.SUPABASE_URL}/rest/v1/rpc/email_has_account`,
-                        {
-                            method: "POST",
-                            headers: {
-                                apikey: env.SUPABASE_SECRET_KEY,
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
-                            },
-                            body: JSON.stringify({ email_address: receiver }),
-                        },
-                    );
-                } else {
-                    // doesn't have account
-                }
             }
 
-            console.log();
+            if (has_account && user_id) {
+                // receiver has account
+                const sender = message.from;
+                const tokenManager = getTokenManager(env);
+                const gmailMessageId = await forwardMessageToGmail(
+                    message,
+                    env,
+                    tokenManager,
+                );
+                const gmailMessage = gmailMessageId
+                    ? await getGmailMessageById(
+                          gmailMessageId.messageId,
+                          tokenManager,
+                      )
+                    : console.error(
+                          "Forwarded message not found in Gmail inbox",
+                      );
+                gmailMessage ? await saveMetaDataToSupabase(gmailMessage, env, user_id, receiver, sender) : null;
 
-            // check if a user exists with the receiver's email address.
+                return;
+            }
+            // doesn't have account
+            console.log(receiver, " doesnt have account");
 
             return;
-        } else {
-            return;
-        }
+        } 
+        // emails is a group address
+        await sendGroupEmails(message, env, classStream.class, classStream.stream);
+        return;
 
-        await message.forward(env.MASTER_GMAIL);
     },
-} satisfies WorkerWithEmail;
+} satisfies ExportedHandler<Env>;
 

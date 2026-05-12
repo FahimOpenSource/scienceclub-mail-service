@@ -4,7 +4,7 @@ main = "src/index.ts"
 compatibility_date = "2026-05-08"
 
 [secrets]
-required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET" ]
+required = [ "SUPABASE_URL", "SUPABASE_SECRET_KEY", "MASTER_GMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", 'ENV_MODE', 'REDIRECT_URI' ]
 
 [[send_email]]
 name = "EMAIL"
