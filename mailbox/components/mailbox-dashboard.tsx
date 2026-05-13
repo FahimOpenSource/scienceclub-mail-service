@@ -57,7 +57,7 @@ export function MailboxDashboard() {
 
     const supabase = createSupabaseBrowserClient()
     await supabase.auth.signOut()
-    router.replace("/")
+    router.replace("/auth")
   }
 
   return (

@@ -185,7 +185,7 @@ export function AuthForm({
       setSubmitting(false)
       return
     }
-    router.push("/dashboard")
+    router.push("/")
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -241,7 +241,7 @@ export function AuthForm({
         return
       }
 
-      router.push("/dashboard")
+      router.push("/")
     } catch {
       setErrors({ form: "Could not create account" })
     } finally {
