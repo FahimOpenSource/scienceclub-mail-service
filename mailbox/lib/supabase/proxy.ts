@@ -38,7 +38,6 @@ export async function updateSession(request: NextRequest) {
         !data &&
         !request.nextUrl.pathname.startsWith("/auth")
     ) {
-        console.log(data)
         // no user, potentially respond by redirecting the user to the login page
         const url = request.nextUrl.clone();
         url.pathname = "/auth";
