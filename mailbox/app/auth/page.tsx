@@ -59,7 +59,7 @@ export default async function AuthenticationPage() {
 
     return (
         <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
-            <AuthForm classOptions={classOptions} />;
+            <AuthForm classOptions={classOptions} />
         </main>
     ); 
 }
