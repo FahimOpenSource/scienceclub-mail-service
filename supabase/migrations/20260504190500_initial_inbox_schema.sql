@@ -34,7 +34,7 @@ create table public.profiles (
 
 create table public.email_messages (
   id uuid primary key default gen_random_uuid(),
-  gmail_message_id text not null,
+  gmail_message_id text not null unique,
   gmail_thread_id text,
   recipient_email text,
   assigned_user_id uuid not null references public.profiles(id) on delete restrict,
@@ -46,7 +46,6 @@ create table public.email_messages (
   has_attachments boolean not null default false,
   is_read boolean not null default false,
   created_at timestamptz not null default now()
-  unique (gmail_message_id, recipient_email)
 );
 
 create index class_streams_class_id_idx

@@ -403,7 +403,7 @@ async function saveMetaDataToSupabase(gmailMessage: GmailMessage, env: Env, user
         return
     } else {
         console.log("Email sent and saved successfully", await response.text());
-        return
+        return 
     }
     
 }
@@ -495,19 +495,20 @@ async function sendGroupEmails(message: any, env: Env, klass: string, stream: st
         : console.error("Forwarded message not found in Gmail inbox");
     
     if (gmailMessage) {
-        for (const [receiver, userId] of Object.entries(groupEmails[0].emails)) {
-            await saveMetaDataToSupabase(
+        await Promise.all(Object.entries(groupEmails[0].emails).map(async ([receiver, userId]): Promise<null> => {await saveMetaDataToSupabase(
                 gmailMessage,
                 env,
                 userId,
                 receiver,
                 sender,
-            ); 
-            console.log('Group msg sent to: ', receiver)
-        }
+            );
+            console.log("Group msg sent to: ", receiver);
+            return null;
+        }))
         console.log("All group messages sent successfully");
         return
-    } return
+    } 
+    return
     
 }
 

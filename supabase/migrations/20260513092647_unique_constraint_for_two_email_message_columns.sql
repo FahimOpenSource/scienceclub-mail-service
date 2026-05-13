@@ -1,0 +1,3 @@
+
+ALTER TABLE public.email_messages DROP CONSTRAINT email_messages_gmail_message_id_key;
+ALTER TABLE public.email_messages ADD CONSTRAINT composite_unique_gmail_message_id_recipient_email_key UNIQUE (gmail_message_id, recipient_email);
