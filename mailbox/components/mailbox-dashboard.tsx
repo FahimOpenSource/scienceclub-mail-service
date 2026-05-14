@@ -7,30 +7,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MessageRow } from "@/components/message-row";
 import type { EmailMessage } from "@/app/page";
 
 export default function Mailbox({
-    allMailStatus,
-    spamStatus,
-    unreadAllMailStatus,
-    unreadSpamStatus,
-    allMail,
+    owner,
+    initAllMailStatus,
+    initSpamStatus,
+    initUnreadAllMailStatus,
+    initUnreadSpamStatus,
+    initAllMail,
+    initSpamMail,
     error,
 }: {
-    allMailStatus: number;
-    spamStatus: number;
-    unreadAllMailStatus: number;
-    unreadSpamStatus: number;
-    allMail: EmailMessage[];
+    owner: string;
+    initAllMailStatus: number;
+    initSpamStatus: number;
+    initUnreadAllMailStatus: number;
+    initUnreadSpamStatus: number;
+    initAllMail: EmailMessage[];
+    initSpamMail: EmailMessage[];
     error: { message: string };
 }) {
-    // const [allMailStatus, setAllMailStatus] = useState(0);
-    // const [spamStatus, setSpamStatus] = useState(0);
-    // const [unreadAllMailStatus, setUnreadAllMailStatus] = useState(0);
-    // const [unreadSpamStatus, setUnreadSpamStatus] = useState(0);
-    // return <MailboxDashboard />;
+    const [allMail, setAllMail] = useState(initAllMail);
+    const [spamMail, setSpamMail] = useState(initSpamMail);
+    const [allMailStatus, setAllMailStatus] = useState(initAllMailStatus)
+    const [spamStatus, setSpamStatus] = useState(initSpamStatus)
+    const [unreadAllMailStatus, setUnreadMailStatus] = useState(initUnreadAllMailStatus)
+    const [unreadSpamStatus, setUnreadSpamStatus] = useState(initUnreadSpamStatus)
     const router = useRouter();
     async function handleSignOut(e: MouseEvent<HTMLAnchorElement>) {
         e.preventDefault();
@@ -39,6 +44,46 @@ export default function Mailbox({
         await supabase.auth.signOut();
         router.replace("/auth");
     }
+
+    useEffect(() => {
+        const supabase = createSupabaseBrowserClient();
+        function updateMail(payload: any) {
+          console.log(payload)
+          const message:EmailMessage = payload.new
+          setAllMail([message, ...allMail])
+          setAllMailStatus(allMailStatus + 1);
+          if (!message.is_read) {
+            setUnreadMailStatus(unreadAllMailStatus+1)
+            
+          }
+          if (message.labelids !== null) {
+            if (message.labelids.includes("SPAM")) {
+                setSpamMail([message, ...spamMail]);
+                setSpamStatus(spamStatus + 1);
+                if (!message.is_read) {
+                    setUnreadSpamStatus(unreadSpamStatus + 1);
+                }
+            }
+          }
+              
+        }
+        const messageChannel = supabase
+            .channel("email-messages-changes")
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "email_messages",
+                },
+                (payload) => updateMail(payload),
+            )
+            .subscribe();
+        return () => {
+            supabase.removeChannel(messageChannel);
+        };
+    });
+
     return (
         <div className="min-h-screen bg-background p-6">
             <div className="max-w-6xl mx-auto">
@@ -52,7 +97,7 @@ export default function Mailbox({
                                 Science Club Mailbox
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Manage your emails
+                                {owner}
                             </p>
                         </div>
                     </div>
@@ -127,10 +172,20 @@ export default function Mailbox({
 
                             <TabsContent value="spam" className="mt-0">
                                 <div className="divide-y divide-border">
-                                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                                        <AlertTriangle className="h-10 w-10 mb-3" />
-                                        <p className="text-sm">Comming soon!</p>
-                                    </div>
+                                    {unreadSpamStatus === 0 && (
+                                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                            <AlertTriangle className="h-10 w-10 mb-3" />
+                                            <p className="text-sm">
+                                                No spam here!
+                                            </p>
+                                        </div>
+                                    )}
+                                    {spamMail.map((email) => (
+                                        <MessageRow
+                                            key={email.id}
+                                            email={email}
+                                        />
+                                    ))}
                                 </div>
                             </TabsContent>
                         </CardContent>

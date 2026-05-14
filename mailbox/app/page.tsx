@@ -63,38 +63,41 @@ export default async function Page() {
     ]).catch(err => {
       return error.message = err
     })
+    const user = await supabase.auth.getClaims()
+    const owner = user.data ? user.data.claims.email : ''
     // these numbers below depend on what has been sent in allMail if pagination is applied, this may cause inaccurate numbers for spamStatus etc..
     const allMail: EmailMessage[] = responses[0];
     const allMailStatus = responses[1].count
     var spamMail: EmailMessage[] = []
     var unreadAllMailStatus = 0;
     var unreadSpamStatus = 0;
-    const spamStatus = spamMail.length;
     allMail.forEach(message => {
-        
-        if (message.labelids !== null && message.labelids.includes('SPAM')){
-            spamMail.push(message)
-            if (!message.is_read) {
-                unreadSpamStatus = unreadSpamStatus + 1
-            }
+        if (message.labelids != null) {
+             if (message.labelids.includes("SPAM")) {
+                 spamMail.push(message);
+                 if (!message.is_read) {
+                     unreadSpamStatus = unreadSpamStatus + 1;
+                 }
+             }
         }
-        if(!message.is_read) {
-            unreadAllMailStatus = unreadAllMailStatus + 1
+        if (!message.is_read) {
+            unreadAllMailStatus = unreadAllMailStatus + 1;
         }
+           
     });
-    
-    
-
+    const spamStatus = spamMail.length;
     
 
   return (
     <>
         <Mailbox
-            allMailStatus={allMailStatus} 
-            spamStatus = {spamStatus}
-            unreadAllMailStatus = {unreadAllMailStatus}
-            unreadSpamStatus = {unreadSpamStatus}
-            allMail={allMail}
+            owner={owner ?? ''}
+            initAllMailStatus={allMailStatus} 
+            initSpamStatus = {spamStatus}
+            initUnreadAllMailStatus = {unreadAllMailStatus}
+            initUnreadSpamStatus = {unreadSpamStatus}
+            initAllMail={allMail}
+            initSpamMail={spamMail}
             error = {error}
         ></Mailbox>
     </>
