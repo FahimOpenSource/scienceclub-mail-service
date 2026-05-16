@@ -29,3 +29,7 @@ next-env.d.ts
 .vscode/
 
 .wrangler/
+.temp/
+dump.sql
+
+storage/

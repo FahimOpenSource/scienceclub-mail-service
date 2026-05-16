@@ -1,63 +1,106 @@
-import { AuthForm } from "@/components/auth-form"
-import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 
-export const dynamic = "force-dynamic"
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import Mailbox from "@/components/mailbox-dashboard";
 
-type ClassRow = {
-  id: number
-  name: string
+// async function getMessages() {
+//   const messages: EmailMessage[] = response;
+//   const response = await fetch();
+//   const data = await response.json();
+//   return data;
+
+// }
+
+export interface EmailMessage {
+    id: number;
+    gmail_message_id: string;
+    gmail_thread_id: string;
+    recipient_email: string;
+    assigned_user_id: string;
+    from_email: string;
+    from_name: string;
+    subject: string;
+    snippet: string;
+    received_at: string;
+    has_attachments: boolean;
+    is_read: boolean;
+    created_at: string;
+    labelids: string[];
 }
 
-type StreamRow = {
-  id: number
-  name: string
+
+async function getMessages(supabase: any) {
+  const response = await supabase
+    .from("email_messages")
+    .select("*", { count: "exact", head: false })
+    .order("received_at", { ascending: false });
+  if (response.status !== 200) {
+    return Promise.reject(
+        `Something went wrong while fetching messages: ${response.statusText}`,
+    );
+  }
+  return response.data;
 }
 
-type ClassStreamRow = {
-  id: number
-  class_id: number
-  stream_id: number
+async function getNumberOfMessages(supabase: any) {
+  const response = await supabase
+    .from("email_messages")
+    .select("*", { count: "exact", head: true });
+  if (response.status !== 200) {
+    return Promise.reject(
+      `Something went wrong while fetching messages: ${response.statusText}`,
+    );
+  }
+  return {count: response.count};
 }
 
-async function getClassOptions() {
-  const supabase = createSupabaseAdminClient()
-  const [{ data: classes }, { data: streams }, { data: classStreams }] =
-    await Promise.all([
-      supabase.from("classes").select("id, name").order("id"),
-      supabase.from("streams").select("id, name").order("id"),
-      supabase
-        .from("class_streams")
-        .select("id, class_id, stream_id")
-        .order("id"),
-    ])
-
-  const streamById = new Map(
-    ((streams ?? []) as StreamRow[]).map((stream) => [stream.id, stream]),
-  )
-
-  return ((classes ?? []) as ClassRow[]).map((klass) => ({
-    id: klass.id,
-    name: klass.name,
-    streams: ((classStreams ?? []) as ClassStreamRow[])
-      .filter((classStream) => classStream.class_id === klass.id)
-      .map((classStream) => {
-        const stream = streamById.get(classStream.stream_id)
-
-        return {
-          classStreamId: classStream.id,
-          name: stream?.name ?? "",
-        }
-      })
-      .filter((stream) => stream.name),
-  }))
-}
 
 export default async function Page() {
-  const classOptions = await getClassOptions()
+    
+    const error: {message:string} = {message:''}
+    const supabase = await createSupabaseServerClient();
+    const responses = await Promise.all([
+      getMessages(supabase),
+      getNumberOfMessages(supabase),
+    ]).catch(err => {
+      return error.message = err
+    })
+    const user = await supabase.auth.getClaims()
+    const owner = user.data ? user.data.claims.email : ''
+    // these numbers below depend on what has been sent in allMail if pagination is applied, this may cause inaccurate numbers for spamStatus etc..
+    const allMail: EmailMessage[] = responses[0];
+    const allMailStatus = responses[1].count
+    var spamMail: EmailMessage[] = []
+    var unreadAllMailStatus = 0;
+    var unreadSpamStatus = 0;
+    allMail.forEach(message => {
+        if (message.labelids != null) {
+             if (message.labelids.includes("SPAM")) {
+                 spamMail.push(message);
+                 if (!message.is_read) {
+                     unreadSpamStatus = unreadSpamStatus + 1;
+                 }
+             }
+        }
+        if (!message.is_read) {
+            unreadAllMailStatus = unreadAllMailStatus + 1;
+        }
+           
+    });
+    const spamStatus = spamMail.length;
+    
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
-      <AuthForm classOptions={classOptions} />
-    </main>
-  )
+    <>
+        <Mailbox
+            owner={owner ?? ''}
+            initAllMailStatus={allMailStatus} 
+            initSpamStatus = {spamStatus}
+            initUnreadAllMailStatus = {unreadAllMailStatus}
+            initUnreadSpamStatus = {unreadSpamStatus}
+            initAllMail={allMail}
+            initSpamMail={spamMail}
+            error = {error}
+        ></Mailbox>
+    </>
+  );
 }

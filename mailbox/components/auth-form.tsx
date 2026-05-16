@@ -99,7 +99,6 @@ export function AuthForm({
   const [submitting, setSubmitting] = React.useState(false)
   const [showPassword, setShowPassword] = React.useState(false)
   const [showConfirm, setShowConfirm] = React.useState(false)
-
   const [email, setEmail] = React.useState("")
   const [fullName, setFullName] = React.useState("")
   const [klass, setKlass] = React.useState("")
@@ -107,9 +106,7 @@ export function AuthForm({
   const [boarding, setBoarding] = React.useState(false)
   const [password, setPassword] = React.useState("")
   const [confirmPassword, setConfirmPassword] = React.useState("")
-
   const [errors, setErrors] = React.useState<Record<string, string>>({})
-
   const selectedClass = React.useMemo(
     () => classOptions.find((option) => String(option.id) === klass),
     [classOptions, klass],
@@ -185,7 +182,7 @@ export function AuthForm({
       setSubmitting(false)
       return
     }
-    router.push("/dashboard")
+    router.push("/")
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -241,7 +238,7 @@ export function AuthForm({
         return
       }
 
-      router.push("/dashboard")
+      router.push("/")
     } catch {
       setErrors({ form: "Could not create account" })
     } finally {
