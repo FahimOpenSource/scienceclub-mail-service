@@ -1,19 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
 
-interface GmailMessagePart {
-  partId: string;
-  mimeType: string;
-  filename: string;
-  headers: Array<{ name: string; value: string }>;
-  body: {
+export interface GmailMessagePartBody {
     attachmentId: string;
     size: number;
     data: string;
-  };
-  parts: GmailMessagePart[];
 }
 
-interface GmailMessage {
+export interface GmailMessagePart {
+    partId: string;
+    mimeType: string;
+    filename: string;
+    headers: Array<{ name: string; value: string }>;
+    body: GmailMessagePartBody;
+    parts?: GmailMessagePart[];
+}
+
+export interface GmailMessage {
   id: string;
   threadId: string;
   labelIds: [string];
@@ -22,6 +24,7 @@ interface GmailMessage {
   internalDate: string;
   payload: GmailMessagePart;
   sizeEstimate: number;
+  error?: {}
 }
 
 interface EmailMessage {

@@ -7,7 +7,7 @@ import type { EmailMessage } from "@/app/page";
 export function MessageRow({ email }: { email: EmailMessage }) {
   return (
       <Link
-          href={`/mail/${email.id}`}
+          href={`/message/${email.id}`}
           className={`flex items-start gap-3 p-4 border-b border-border hover:bg-muted/60 transition-colors ${
               !email.is_read ? "bg-primary/5" : ""
           }`}
