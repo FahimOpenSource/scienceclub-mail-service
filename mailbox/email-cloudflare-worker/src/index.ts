@@ -420,6 +420,88 @@ async function saveMetaDataToSupabase(
   }
 }
 
+function checkForAttachments (topLevelPart: GmailMessagePart) {
+  var attachments = []
+   if (topLevelPart.mimeType === "multipart/mixed") {
+       if (topLevelPart.parts) {
+           for (var messagePart of topLevelPart.parts) {
+               if (messagePart.mimeType !== "multipart/alternative") {
+                   const attachmentId = messagePart.body.attachmentId;
+                   const fileName = messagePart.filename;
+                   const size = messagePart.body.size;
+                   const mimeType = messagePart.mimeType;
+                   attachments.push({
+                       attachmentId,
+                       fileName,
+                       size,
+                       mimeType,
+                   });
+               }
+           }
+       }
+   }
+   return attachments;
+}
+
+export async function GetAttachmentData(
+    accessToken: string,
+    messageId: string,
+    attachmentId: string,
+): Promise<GmailMessagePartBody | null> {
+    const getMessageUrl = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+    );
+
+    const response = await fetch(getMessageUrl.toString(), {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    });
+    if (!response.ok) {
+        console.log(`Error fetching attachement,${await response.json()}`);
+        return null;
+    }
+    const attachment: GmailMessagePartBody = await response.json();
+    attachment.attachmentId = attachmentId;
+    return attachment;
+}
+
+async function SaveAttachments( message: GmailMessage,tokenManager: DurableObjectStub<GoogleOAuthManager>, env:Env) {
+  const messageId = message.id
+  const accessToken = await tokenManager.getAccessToken();
+  const attachments = checkForAttachments(message.payload)
+  if (attachments.length !== 0) {
+    for(var attachment of attachments) {
+      if (accessToken) {
+        const attachmentData = await GetAttachmentData(
+            accessToken,
+            messageId,
+            attachment.attachmentId,
+        );
+        if (attachmentData) {
+          const data = gmailBase64UrlToBytes(attachmentData.data);
+          const response = await fetch(`${env.SUPABASE_URL}/storage/v1/object/email-attachments/${messageId}/${attachment.fileName}`, {
+          method: "POST",
+          headers: {
+            apikey: env.SUPABASE_SECRET_KEY,
+            Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+            "Content-Type": attachment.mimeType,
+            "x-upsert": "true",
+             }, body: data
+          })
+          const body = await response.json();
+          if (!response.ok) {
+            console.error('storage error', body)
+          } 
+          console.log('storage response', body)
+      } if (!attachmentData) {
+        console.error('access token missing')
+      }
+    }
+    }
+  }
+}
 async function isMessageSaved(
   gmailMessageId: string,
   env: Env,
@@ -478,6 +560,23 @@ async function confirmHasUserAccount(
   return { has_account, user_id };
 }
 
+function gmailBase64UrlToBytes(data:string) {
+    let base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+
+    while (base64.length % 4) {
+        base64 += "=";
+    }
+
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    return bytes;
+}
+
 async function sendGroupEmails(
   message: any,
   env: Env,
@@ -534,6 +633,7 @@ async function sendGroupEmails(
         },
       ),
     );
+    await SaveAttachments(gmailMessage, tokenManager, env)
     console.log("All group messages sent successfully");
     return;
   }
@@ -622,18 +722,20 @@ export default {
         const gmailMessage = gmailMessageId
           ? await getGmailMessageById(gmailMessageId.messageId, tokenManager)
           : console.error("Forwarded message not found in Gmail inbox");
-        gmailMessage
-          ? await saveMetaDataToSupabase(
+        if (gmailMessage) {
+          await saveMetaDataToSupabase(
               gmailMessage,
               env,
               user_id,
               receiver,
               sender,
             )
-          : null;
+            await SaveAttachments(gmailMessage, tokenManager,env)
 
+        }
         return;
       }
+
       // doesn't have account
       console.log(receiver, " doesnt have account");
 

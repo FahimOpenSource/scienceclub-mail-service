@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Star } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { Paperclip, Star } from "lucide-react";
 import type { EmailMessage } from "@/app/page";
 
 
 export function MessageRow({ email }: { email: EmailMessage }) {
+  const receivedAt = formatDistanceToNow(new Date(email.received_at), {
+      addSuffix: true,
+  });
+
   return (
       <Link
           href={`/message/${email.id}`}
@@ -32,8 +37,11 @@ export function MessageRow({ email }: { email: EmailMessage }) {
                       {email.labelids !== null && email.labelids.includes("IMPORTANT") && (
                           <Star className="h-4 w-4 text-accent fill-accent" />
                       )}
+                      {email.has_attachments && (
+                          <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      )}
                       <span className="text-xs text-muted-foreground">
-                          {email.received_at}
+                          {receivedAt}
                       </span>
                   </div>
               </div>

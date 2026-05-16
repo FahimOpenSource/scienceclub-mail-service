@@ -12,7 +12,7 @@ import { EmailMessage } from "@/app/page"
 import {GmailMessage, GmailMessagePart, GmailMessagePartBody} from '@/email-cloudflare-worker/src/index'
 import { sanitize } from "isomorphic-dompurify";
 
-async function GetAttachmentData(accessToken:string, messageId:string, attachmentId:string): Promise<GmailMessagePartBody|null> {
+export async function GetAttachmentData(accessToken:string, messageId:string, attachmentId:string): Promise<GmailMessagePartBody|null> {
   const getMessageUrl = new URL(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
   );
@@ -24,7 +24,8 @@ async function GetAttachmentData(accessToken:string, messageId:string, attachmen
       },
   });
   if (!response.ok) {
-    return Promise.reject(`Error fetching attachement,${await response.json()}`)
+    Promise.reject(`Error fetching attachement,${await response.json()}`);
+    return null
   }
   const attachment: GmailMessagePartBody = await response.json();
   attachment.attachmentId = attachmentId
@@ -62,7 +63,7 @@ async function addRelatedAttachementsToBody(relatedAttachements: {contentId: str
 }
 
 function GetAttachments (topLevelPart: GmailMessagePart) {
-  var attachments: { related: {contentId: string, attachmentId: string, mimeType:string,}[], unrelated:{attachmentId:string, fileName:string, size:number}[]} = {
+  var attachments: { related: {contentId: string, attachmentId: string, mimeType:string,}[], unrelated:{attachmentId:string, fileName:string, mimeType:string, size:number}[]} = {
     related: [],
     unrelated: []
 
@@ -88,7 +89,8 @@ function GetAttachments (topLevelPart: GmailMessagePart) {
           const attachmentId = messagePart.body.attachmentId
           const fileName = messagePart.filename
           const size = messagePart.body.size
-          attachments.unrelated.push({attachmentId, fileName, size})
+          const mimeType = messagePart.mimeType;
+          attachments.unrelated.push({attachmentId, fileName, size,mimeType})
         }
       }
     }
@@ -115,6 +117,38 @@ function GetMessageBody (messageParts: GmailMessagePart[]) {
   
   
 }
+
+function formatAttachmentSize(size: number) {
+    if (size < 1024) {
+        return `${size} B`;
+    }
+
+    const units = ["KB", "MB", "GB"];
+    let attachmentSize = size / 1024;
+    let unitIndex = 0;
+
+    while (attachmentSize >= 1024 && unitIndex < units.length - 1) {
+        attachmentSize = attachmentSize / 1024;
+        unitIndex = unitIndex + 1;
+    }
+
+    return `${attachmentSize.toFixed(attachmentSize >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+export async function getAccessToken() {
+    const workerResponse = await fetch(
+        "https://email-worker.scienceclublss.me/access-token",
+        { method: "GET" },
+    );
+    const accessToken: { access_token: string } = await workerResponse.json();
+    if (workerResponse.ok) {
+        return accessToken;
+    }
+    console.log('error retreiving access token ', workerResponse)
+    return accessToken;
+}
+
+
 
 export default async function MailPage({
     params,
@@ -158,13 +192,20 @@ export default async function MailPage({
             }   
         }
     }
+    function GetStorageUrl(
+        fileName: string,
+    ) {
+        const { data } = supabase.storage
+            .from("email-attachments")
+            .getPublicUrl(
+                `${messageId}/${fileName}`,
+            );
+        return data.publicUrl
+    }
 
     // retriving google access token
-    const workerResponse = await fetch(
-        "https://email-worker.scienceclublss.me/access-token",
-        { method: "GET" },
-    );
-    const accessToken: { access_token: string } = await workerResponse.json();
+    const accessToken = await getAccessToken()
+    
     const getMessageUrl = new URL(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${gmailMsgId}`,
     );
@@ -204,7 +245,6 @@ export default async function MailPage({
     if (attachments.related.length !== 0 && messageBody) {
       messageBody = await addRelatedAttachementsToBody(attachments.related,messageId,accessToken.access_token,messageBody)
     }
-    // console.log(attachments)
 
     return (
         <div className="min-h-screen bg-background p-6">
@@ -265,11 +305,41 @@ export default async function MailPage({
 
                         <article className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                             <div
-                                dangerouslySetInnerHTML={{ __html: messageBody??' ' }}
+                                dangerouslySetInnerHTML={{
+                                    __html: messageBody ?? " ",
+                                }}
                             ></div>
                         </article>
                     </CardContent>
                 </Card>
+
+                {attachments.unrelated.length > 0 && (
+                    <div className="mt-4 grid gap-2">
+                        <span className="text-xs text-muted-foreground">
+                            ATTACHMENTS
+                        </span>
+                        {attachments.unrelated.map((attachment) => (
+                            <Card key={attachment.attachmentId} size="sm">
+                                <CardContent className="p-3">
+                                    <Link
+                                        href={GetStorageUrl(attachment.fileName)}
+                                        className="flex items-center justify-between gap-3 text-sm transition-colors hover:text-primary"
+                                    >
+                                        <span className="min-w-0 truncate font-medium">
+                                            {attachment.fileName ||
+                                                "Attachment"}
+                                        </span>
+                                        <span className="shrink-0 text-xs text-muted-foreground">
+                                            {formatAttachmentSize(
+                                                attachment.size,
+                                            )}
+                                        </span>
+                                    </Link>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
 
                 <p className="mt-3 text-center text-xs text-muted-foreground">
                     Read-only view &middot; replying and forwarding are disabled

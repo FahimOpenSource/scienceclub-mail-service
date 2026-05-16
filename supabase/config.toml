@@ -105,6 +105,9 @@ enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
+[storage.buckets.email-messages]
+public = true
+objects_path = "./storage/email-attachments"
 # Uncomment to configure local storage buckets
 # [storage.buckets.images]
 # public = false

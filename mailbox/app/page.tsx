@@ -21,6 +21,7 @@ export interface EmailMessage {
     subject: string;
     snippet: string;
     received_at: string;
+    has_attachments: boolean;
     is_read: boolean;
     created_at: string;
     labelids: string[];

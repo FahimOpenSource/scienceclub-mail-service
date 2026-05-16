@@ -31,3 +31,5 @@ next-env.d.ts
 .wrangler/
 .temp/
 dump.sql
+
+storage/
