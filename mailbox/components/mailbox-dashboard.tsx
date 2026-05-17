@@ -67,6 +67,7 @@ export default function Mailbox({
           }
               
         }
+        supabase.realtime.setAuth();
         const messageChannel = supabase
             .channel("email-messages-changes")
             .on(
