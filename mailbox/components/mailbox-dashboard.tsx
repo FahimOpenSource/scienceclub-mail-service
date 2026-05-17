@@ -20,6 +20,7 @@ export default function Mailbox({
     initAllMail,
     initSpamMail,
     error,
+    accessToken,
 }: {
     owner: string;
     initAllMailStatus: number;
@@ -29,13 +30,17 @@ export default function Mailbox({
     initAllMail: EmailMessage[];
     initSpamMail: EmailMessage[];
     error: { message: string };
+    accessToken:string|null
 }) {
     const [allMail, setAllMail] = useState(initAllMail);
     const [spamMail, setSpamMail] = useState(initSpamMail);
-    const [allMailStatus, setAllMailStatus] = useState(initAllMailStatus)
-    const [spamStatus, setSpamStatus] = useState(initSpamStatus)
-    const [unreadAllMailStatus, setUnreadMailStatus] = useState(initUnreadAllMailStatus)
-    const [unreadSpamStatus, setUnreadSpamStatus] = useState(initUnreadSpamStatus)
+    const [allMailStatus, setAllMailStatus] = useState(initAllMailStatus);
+    const [spamStatus, setSpamStatus] = useState(initSpamStatus);
+    const [unreadAllMailStatus, setUnreadMailStatus] = useState(
+        initUnreadAllMailStatus,
+    );
+    const [unreadSpamStatus, setUnreadSpamStatus] =
+        useState(initUnreadSpamStatus);
     const router = useRouter();
     async function handleSignOut(e: MouseEvent<HTMLAnchorElement>) {
         e.preventDefault();
@@ -48,26 +53,30 @@ export default function Mailbox({
     useEffect(() => {
         const supabase = createSupabaseBrowserClient();
         function updateMail(payload: any) {
-          console.log(payload)
-          const message:EmailMessage = payload.new
-          setAllMail([message, ...allMail])
-          setAllMailStatus(allMailStatus + 1);
-          if (!message.is_read) {
-            setUnreadMailStatus(unreadAllMailStatus+1)
-            
-          }
-          if (message.labelids !== null) {
-            if (message.labelids.includes("SPAM")) {
-                setSpamMail([message, ...spamMail]);
-                setSpamStatus(spamStatus + 1);
+            console.log(payload);
+            const message: EmailMessage = payload.new;
+            if (message) {
+                setAllMail([message, ...allMail]);
+                setAllMailStatus(allMailStatus + 1);
                 if (!message.is_read) {
-                    setUnreadSpamStatus(unreadSpamStatus + 1);
+                    setUnreadMailStatus(unreadAllMailStatus + 1);
                 }
-            }
-          }
-              
+                if (message.labelids !== null) {
+                    if (message.labelids.includes("SPAM")) {
+                        setSpamMail([message, ...spamMail]);
+                        setSpamStatus(spamStatus + 1);
+                        if (!message.is_read) {
+                            setUnreadSpamStatus(unreadSpamStatus + 1);
+                        }
+                    }
+                }
+            } 
+            console.log('New message not received')
+            
         }
-        supabase.realtime.setAuth();
+
+        // const data = await supabase.auth.getSession()
+        supabase.realtime.setAuth(accessToken);
         const messageChannel = supabase
             .channel("email-messages-changes")
             .on(

@@ -64,6 +64,8 @@ export default async function Page() {
     ]).catch(err => {
       return error.message = err
     })
+    const {data} = await supabase.auth.getSession()
+    const accessToken = data.session?.access_token
     const user = await supabase.auth.getClaims()
     const owner = user.data ? user.data.claims.email : ''
     // these numbers below depend on what has been sent in allMail if pagination is applied, this may cause inaccurate numbers for spamStatus etc..
@@ -100,6 +102,7 @@ export default async function Page() {
             initAllMail={allMail}
             initSpamMail={spamMail}
             error = {error}
+            accessToken = {accessToken ?? null}
         ></Mailbox>
     </>
   );
