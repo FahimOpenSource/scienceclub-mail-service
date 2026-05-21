@@ -101,6 +101,18 @@ export class GoogleOAuthManager extends DurableObject<Env> {
     return token !== undefined ? String(token) : null;
   }
 
+  async getAllData(): Promise<{ accessToken: string | null; refreshToken: string | null; accessTokenExpiresIn: number | undefined; refreshTokenExpiresIn: number | undefined }> {
+    const accessToken = await this.getAccessToken();
+    var refreshToken = await this.getRefreshToken();
+    refreshToken = refreshToken ? refreshToken.slice(0, 20) + "..." : null; // Limit the length of the refresh token for security reasons when logging
+    const accessTokenExpiresIn: number | undefined = await this.ctx.storage.get(
+        "access_token_expires_in",
+    );
+    const refreshTokenExpiresIn: number | undefined = await this.ctx.storage.get("refresh_token_expires_in");
+  
+    return { accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn };
+  }
+
   async removeRefreshToken(): Promise<void> {
     await this.ctx.storage.delete("refresh_token");
     await this.ctx.storage.delete("refresh_token_expires_in");
@@ -156,10 +168,14 @@ export class GoogleOAuthManager extends DurableObject<Env> {
     }
 
     const refreshToken = await this.getRefreshToken();
-    refreshToken
-      ? await this.refreshAccessToken(refreshToken)
-      : console.log("Alarm error: Refresh token not found");
-    console.log("Access token refreshed successfully");
+
+    if (refreshToken) {
+      await this.refreshAccessToken(refreshToken)
+      console.log("Access token refreshed successfully");
+    } else {     
+      console.error("Alarm error: Refresh token not found");
+       return;
+    }
   }
 }
 
@@ -232,16 +248,16 @@ async function getGoogleAccessToken(
   }
 
   // now we have the access token and the refresh token
-  data.refresh_token && data.refresh_token_expires_in
+  data.refresh_token
     ? await tokenManager.setRefreshToken(
         data.refresh_token,
-        data.refresh_token_expires_in,
+        data.refresh_token_expires_in ? data.refresh_token_expires_in : 0,
       )
     : null;
   data.access_token && data.expires_in
     ? await tokenManager.setAccessToken(data.access_token, data.expires_in)
     : null;
-  console.log("Received refresh token from Google:", data.refresh_token);
+  console.log("Received refresh token from Google:", data , data.refresh_token);
 
   return data;
 }
@@ -666,6 +682,16 @@ export default {
       return new Response("Refresh token removed.", {
         status: 200,
       });
+    }
+    if (url.pathname === "/debug/get-all-data") {
+        const tokenManager = getTokenManager(env) 
+        const data = await tokenManager.getAllData();
+        const body = JSON.stringify(data);
+        console.log("Debug data:", data);
+        return new Response(body, {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 
     if (url.pathname === "/google/callback") {
