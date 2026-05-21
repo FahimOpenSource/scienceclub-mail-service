@@ -31,7 +31,7 @@ export function MessageRow({ email }: { email: EmailMessage }) {
                   <span
                       className={`text-sm truncate ${!email.is_read ? "font-semibold" : "font-medium"}`}
                   >
-                      {email.from_name.split(' ')[0]}
+                      {email.from_name.replace(/\s*<[^>]+>\s*$/, "")}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
                       {email.labelids !== null && email.labelids.includes("IMPORTANT") && (

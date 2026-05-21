@@ -233,7 +233,7 @@ export default async function MailPage({
     )?.value;
     const fromName = payload.headers
         .find((header) => header.name === "From")
-        ?.value?.replace(/\s*<[^>]+>\s*$/, "");
+        ?.value.split(" ")[0];
     
     const initials = fromName? fromName
         .split(" ")
