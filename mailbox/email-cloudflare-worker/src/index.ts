@@ -103,11 +103,13 @@ export class GoogleOAuthManager extends DurableObject<Env> {
 
   async getAllData(): Promise<{ accessToken: string | null; refreshToken: string | null; accessTokenExpiresIn: number | undefined; refreshTokenExpiresIn: number | undefined }> {
     const accessToken = await this.getAccessToken();
-    const refreshToken = await this.getRefreshToken();
+    var refreshToken = await this.getRefreshToken();
+    refreshToken = refreshToken ? refreshToken.slice(0, 20) + "..." : null; // Limit the length of the refresh token for security reasons when logging
     const accessTokenExpiresIn: number | undefined = await this.ctx.storage.get(
         "access_token_expires_in",
     );
     const refreshTokenExpiresIn: number | undefined = await this.ctx.storage.get("refresh_token_expires_in");
+  
     return { accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn };
   }
 
