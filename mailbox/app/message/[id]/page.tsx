@@ -5,12 +5,11 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { getEmailById } from "@/lib/emails"
 import {createSupabaseServerClient} from '@/lib/supabase/server'
 import { notFound } from "next/navigation";
 import { EmailMessage } from "@/app/page"
 import {GmailMessage, GmailMessagePart, GmailMessagePartBody} from '@/email-cloudflare-worker/src/index'
-import { sanitize } from "isomorphic-dompurify";
+import EmailBody from "@/components/email-body"
 
 export async function GetAttachmentData(accessToken:string, messageId:string, attachmentId:string): Promise<GmailMessagePartBody|null> {
   const getMessageUrl = new URL(
@@ -106,7 +105,7 @@ function GetMessageBody (messageParts: GmailMessagePart[]) {
           "base64url",
       ).toString("utf-8");
       //clean the html     
-      return sanitize(decodedHtmlData);
+      return (decodedHtmlData);
 
     } 
     if (messagePart.parts){
@@ -304,11 +303,7 @@ export default async function MailPage({
                         <Separator className="my-5" />
 
                         <article className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                            <div
-                                dangerouslySetInnerHTML={{
-                                    __html: messageBody ?? " ",
-                                }}
-                            ></div>
+                            <EmailBody html={messageBody ?? " "} />
                         </article>
                     </CardContent>
                 </Card>
